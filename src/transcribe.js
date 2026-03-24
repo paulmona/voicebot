@@ -1,4 +1,5 @@
 const WebSocket = require('ws')
+const log = require('./log')
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY
 const STT_ENDPOINT = 'wss://api.elevenlabs.io/v1/speech-to-text/realtime'
@@ -13,6 +14,7 @@ const MIN_SILENCE_DURATION_MS = 200 // minimum pause between segments
  * Create a streaming transcription session using ElevenLabs Scribe Realtime.
  * Returns an object with:
  *   - send(pcmBuffer): feed raw PCM audio (48kHz, 16-bit, mono)
+ *   - commit(): manually flush buffered text
  *   - close(): end the session
  *   - onTranscript: callback for committed transcripts
  *   - onPartial: callback for partial transcripts (optional)
@@ -27,6 +29,8 @@ function createTranscriptionSession() {
     onTranscript: null,
     onPartial: null,
     onError: null,
+    onClose: null,
+    alive: true,
     ready: new Promise((resolve, reject) => {
       readyResolve = resolve
       readyReject = reject
@@ -39,6 +43,16 @@ function createTranscriptionSession() {
         message_type: 'input_audio_chunk',
         audio_base_64: base64,
         commit: false,
+        sample_rate: 48000,
+      }))
+    },
+
+    commit() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return
+      ws.send(JSON.stringify({
+        message_type: 'input_audio_chunk',
+        audio_base_64: '',
+        commit: true,
         sample_rate: 48000,
       }))
     },
@@ -67,7 +81,7 @@ function createTranscriptionSession() {
   })
 
   ws.on('open', () => {
-    console.log('ElevenLabs STT WebSocket connected')
+    log.debug('ElevenLabs STT WebSocket connected')
   })
 
   ws.on('message', (data) => {
@@ -76,7 +90,7 @@ function createTranscriptionSession() {
 
       switch (msg.message_type) {
         case 'session_started':
-          console.log('STT session started:', msg.session_id)
+          log.debug('STT session started:', msg.session_id)
           readyResolve()
           break
 
@@ -101,31 +115,32 @@ function createTranscriptionSession() {
         case 'input_error':
         case 'chunk_size_exceeded':
         case 'session_time_limit_exceeded':
-          console.error(`STT error (${msg.message_type}):`, msg.error || msg)
+          log.error(`STT error (${msg.message_type}):`, msg.error || msg)
           if (session.onError) session.onError(msg)
           break
 
         case 'insufficient_audio_activity':
-          // Expected when no speech detected - not a real error
           break
 
         default:
-          console.log('STT message:', msg.message_type)
+          log.debug('STT message:', msg.message_type)
       }
     } catch (err) {
-      console.error('Failed to parse STT message:', err)
+      log.error('Failed to parse STT message:', err)
     }
   })
 
   ws.on('error', (err) => {
-    console.error('STT WebSocket error:', err.message)
+    log.error('STT WebSocket error:', err.message)
     readyReject(err)
     if (session.onError) session.onError(err)
   })
 
   ws.on('close', (code, reason) => {
-    console.log(`STT WebSocket closed: ${code} ${reason}`)
+    log.debug(`STT WebSocket closed: ${code} ${reason}`)
     ws = null
+    session.alive = false
+    if (session.onClose) session.onClose()
   })
 
   return session

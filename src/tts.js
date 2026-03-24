@@ -6,10 +6,31 @@ const ELEVENLABS_VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'DbwWo4rVEd5NrejH
 const ELEVENLABS_API_URL = 'https://api.elevenlabs.io/v1'
 
 /**
+ * Strip markdown formatting that TTS would read literally.
+ */
+function stripMarkdown(text) {
+  return text
+    .replace(/\*\*(.+?)\*\*/g, '$1')   // **bold**
+    .replace(/\*(.+?)\*/g, '$1')        // *italic*
+    .replace(/__(.+?)__/g, '$1')        // __underline__
+    .replace(/_(.+?)_/g, '$1')          // _italic_
+    .replace(/~~(.+?)~~/g, '$1')        // ~~strikethrough~~
+    .replace(/`(.+?)`/g, '$1')          // `code`
+    .replace(/```[\s\S]*?```/g, '')     // ```code blocks```
+    .replace(/^#{1,6}\s+/gm, '')        // # headings
+    .replace(/^[-*]\s+/gm, '')          // - bullet points
+    .replace(/^\d+\.\s+/gm, '')         // 1. numbered lists
+    .replace(/\[(.+?)\]\(.+?\)/g, '$1') // [links](url)
+    .replace(/\n{2,}/g, '. ')           // multiple newlines to pause
+    .trim()
+}
+
+/**
  * Convert text to speech using ElevenLabs and play it in the voice channel.
  */
 async function speakInChannel(text, connection) {
-  const audioStream = await textToSpeech(text)
+  const cleaned = stripMarkdown(text)
+  const audioStream = await textToSpeech(cleaned)
   await playAudio(audioStream, connection)
 }
 

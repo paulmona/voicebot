@@ -4,6 +4,8 @@ services:
     container_name: voicebot
     restart: unless-stopped
     env_file: .env
+    ports:
+      - "8080:8080"
     stop_grace_period: 10s
     mem_limit: 512m
     cpus: 1

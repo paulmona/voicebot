@@ -13,9 +13,7 @@ RUN npm ci --omit=dev
 FROM node:22-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv \
     ffmpeg \
-    && pip3 install --break-system-packages faster-whisper \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -28,9 +26,13 @@ COPY --from=node-builder /opt/voicebot/node_modules ./node_modules
 COPY package.json ./
 COPY src/ ./src/
 
-# Tmp directory for audio files
-RUN mkdir -p tmp && chown -R voicebot:voicebot /home/voicebot
+RUN chown -R voicebot:voicebot /home/voicebot
 
 USER voicebot
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "const http = require('http'); http.get('http://localhost:8080/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))"
 
 CMD ["node", "src/index.js"]

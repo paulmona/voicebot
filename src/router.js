@@ -1,4 +1,5 @@
 const { speakInChannel } = require('./tts')
+const log = require('./log')
 
 const FRIDAY_BOT_USER_ID = process.env.FRIDAY_BOT_USER_ID
 const SUNDAY_BOT_USER_ID = process.env.SUNDAY_BOT_USER_ID
@@ -14,6 +15,10 @@ const WAKE_WORDS = [
 
 // Timeout for waiting for agent reply (ms)
 const REPLY_TIMEOUT = 30000
+
+// Set by index.js to control TTS muting
+let setTtsPlaying = null
+function registerTtsControl(fn) { setTtsPlaying = fn }
 
 /**
  * Detect which agent to route to based on wake words in the transcript.
@@ -36,30 +41,35 @@ async function routeTranscript(transcript, textChannel, voiceConnection) {
   const { agentId, name } = detectAgent(transcript)
 
   if (!agentId) {
-    console.error('No agent ID configured for routing')
+    log.error('No agent ID configured for routing')
     return
   }
 
-  // Post transcript to text channel with @mention
+  log.info(`Routed to ${name}: "${transcript}"`)
   const message = await textChannel.send(
     `<@${agentId}> [voice] ${transcript}`
   )
-  console.log(`Routed to ${name} (${agentId}): "${transcript}"`)
+  log.debug('Message sent, waiting for reply...')
 
   // Wait for the agent's reply
   const reply = await waitForReply(textChannel, agentId)
   if (!reply) {
-    console.log('No reply received within timeout')
+    log.warn('No reply received within timeout')
     return
   }
 
-  console.log(`${name} replied: "${reply}"`)
+  log.info(`${name} replied: "${reply.slice(0, 80)}${reply.length > 80 ? '...' : ''}"`)
 
   // Speak the reply in the voice channel
   try {
+    log.debug('Starting TTS playback')
+    if (setTtsPlaying) setTtsPlaying(true)
     await speakInChannel(reply, voiceConnection)
+    log.debug('TTS playback complete')
   } catch (err) {
-    console.error('TTS playback error:', err)
+    log.error('TTS playback error:', err)
+  } finally {
+    if (setTtsPlaying) setTtsPlaying(false)
   }
 }
 
@@ -86,4 +96,4 @@ function waitForReply(textChannel, agentId) {
   })
 }
 
-module.exports = { routeTranscript, detectAgent }
+module.exports = { routeTranscript, detectAgent, registerTtsControl }

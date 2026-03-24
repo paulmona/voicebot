@@ -1,8 +1,10 @@
 require('dotenv').config({ override: true })
+const http = require('http')
 const { Client, GatewayIntentBits, Events } = require('discord.js')
-const { joinVoiceChannel } = require('@discordjs/voice')
+const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice')
 const { startListening } = require('./voice')
-const { routeTranscript } = require('./router')
+const { routeTranscript, registerTtsControl } = require('./router')
+const log = require('./log')
 
 const client = new Client({
   intents: [
@@ -16,25 +18,54 @@ const client = new Client({
 const VOICE_CHANNEL_ID = process.env.DISCORD_VOICE_CHANNEL_ID
 const TEXT_CHANNEL_ID = process.env.DISCORD_TEXT_CHANNEL_ID
 const GUILD_ID = process.env.DISCORD_GUILD_ID
+const HEALTH_PORT = parseInt(process.env.HEALTH_PORT || '8080', 10)
 
+// --- Health check server ---
+let botReady = false
+
+const healthServer = http.createServer((req, res) => {
+  if (req.url === '/health') {
+    const connected = client.ws.status === 0 // 0 = READY
+    const voiceConn = getVoiceConnection(GUILD_ID)
+    const status = {
+      ok: botReady && connected,
+      discord: connected ? 'connected' : 'disconnected',
+      voice: voiceConn ? 'joined' : 'not joined',
+      uptime: Math.floor(process.uptime()),
+    }
+    const code = status.ok ? 200 : 503
+    res.writeHead(code, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify(status))
+  } else {
+    res.writeHead(404)
+    res.end()
+  }
+})
+
+healthServer.listen(HEALTH_PORT, () => {
+  log.info(`Health check listening on port ${HEALTH_PORT}`)
+})
+
+// --- Discord bot ---
 client.once(Events.ClientReady, async (c) => {
-  console.log(`Voice bot connected as ${c.user.tag}`)
+  log.info(`Voice bot connected as ${c.user.tag}`)
+  botReady = true
 
   const guild = await client.guilds.fetch(GUILD_ID).catch(() => null)
   if (!guild) {
-    console.error(`Guild ${GUILD_ID} not found`)
+    log.error(`Guild ${GUILD_ID} not found`)
     process.exit(1)
   }
 
   const voiceChannel = await guild.channels.fetch(VOICE_CHANNEL_ID).catch(() => null)
   if (!voiceChannel) {
-    console.error(`Voice channel ${VOICE_CHANNEL_ID} not found`)
+    log.error(`Voice channel ${VOICE_CHANNEL_ID} not found`)
     process.exit(1)
   }
 
   const textChannel = await guild.channels.fetch(TEXT_CHANNEL_ID).catch(() => null)
   if (!textChannel) {
-    console.error(`Text channel ${TEXT_CHANNEL_ID} not found`)
+    log.error(`Text channel ${TEXT_CHANNEL_ID} not found`)
     process.exit(1)
   }
 
@@ -45,13 +76,13 @@ client.once(Events.ClientReady, async (c) => {
     selfDeaf: false,
   })
 
-  console.log(`Joined voice channel: ${voiceChannel.name}`)
-  console.log(`Text channel: ${textChannel.name}`)
+  log.info(`Joined voice: ${voiceChannel.name} | Text: ${textChannel.name}`)
 
-  startListening(connection, async (transcript) => {
-    console.log(`Transcript: "${transcript}"`)
+  const { setTtsPlaying } = startListening(connection, async (transcript) => {
+    log.info(`Transcript: "${transcript}"`)
     await routeTranscript(transcript, textChannel, connection)
   })
+  registerTtsControl(setTtsPlaying)
 })
 
 // Handle !join and !leave commands
@@ -73,18 +104,19 @@ client.on(Events.MessageCreate, async (msg) => {
     })
 
     const textChannel = msg.channel
-    console.log(`Joined voice channel: ${voiceChannel.name} (via !join)`)
+    log.info(`Joined voice channel: ${voiceChannel.name} (via !join)`)
 
-    startListening(connection, async (transcript) => {
-      console.log(`Transcript: "${transcript}"`)
+    const { setTtsPlaying } = startListening(connection, async (transcript) => {
+      log.info(`Transcript: "${transcript}"`)
       await routeTranscript(transcript, textChannel, connection)
     })
+    registerTtsControl(setTtsPlaying)
 
     await msg.reply(`Joined **${voiceChannel.name}**. Listening...`)
   }
 
   if (msg.content === '!leave') {
-    const connection = require('@discordjs/voice').getVoiceConnection(msg.guild.id)
+    const connection = getVoiceConnection(msg.guild.id)
     if (connection) {
       connection.destroy()
       await msg.reply('Left voice channel.')
@@ -93,6 +125,27 @@ client.on(Events.MessageCreate, async (msg) => {
     }
   }
 })
+
+// --- Graceful shutdown ---
+function shutdown(signal) {
+  log.info(`${signal} received, shutting down...`)
+
+  // Disconnect from voice
+  const connection = getVoiceConnection(GUILD_ID)
+  if (connection) connection.destroy()
+
+  // Close health server
+  healthServer.close()
+
+  // Destroy Discord client
+  client.destroy()
+
+  log.info('Shutdown complete')
+  process.exit(0)
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGINT', () => shutdown('SIGINT'))
 
 // No model to preload - ElevenLabs STT connects on demand
 client.login(process.env.DISCORD_BOT_TOKEN)
