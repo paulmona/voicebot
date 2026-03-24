@@ -1,3 +1,4 @@
+require('dotenv').config({ override: true })
 const { Client, GatewayIntentBits, Events } = require('discord.js')
 const { joinVoiceChannel } = require('@discordjs/voice')
 const { startListening } = require('./voice')
@@ -19,19 +20,19 @@ const GUILD_ID = process.env.DISCORD_GUILD_ID
 client.once(Events.ClientReady, async (c) => {
   console.log(`Voice bot connected as ${c.user.tag}`)
 
-  const guild = client.guilds.cache.get(GUILD_ID)
+  const guild = await client.guilds.fetch(GUILD_ID).catch(() => null)
   if (!guild) {
     console.error(`Guild ${GUILD_ID} not found`)
     process.exit(1)
   }
 
-  const voiceChannel = guild.channels.cache.get(VOICE_CHANNEL_ID)
+  const voiceChannel = await guild.channels.fetch(VOICE_CHANNEL_ID).catch(() => null)
   if (!voiceChannel) {
     console.error(`Voice channel ${VOICE_CHANNEL_ID} not found`)
     process.exit(1)
   }
 
-  const textChannel = guild.channels.cache.get(TEXT_CHANNEL_ID)
+  const textChannel = await guild.channels.fetch(TEXT_CHANNEL_ID).catch(() => null)
   if (!textChannel) {
     console.error(`Text channel ${TEXT_CHANNEL_ID} not found`)
     process.exit(1)
@@ -93,4 +94,5 @@ client.on(Events.MessageCreate, async (msg) => {
   }
 })
 
+// No model to preload - ElevenLabs STT connects on demand
 client.login(process.env.DISCORD_BOT_TOKEN)

@@ -1,93 +1,92 @@
 const { EndBehaviorType } = require('@discordjs/voice')
-const { createWriteStream, mkdirSync, existsSync } = require('fs')
-const { join } = require('path')
-const { transcribe } = require('./transcribe')
-const { playAudio } = require('./tts')
-
-const TMP_DIR = join(__dirname, '..', 'tmp')
-
-// Ensure tmp directory exists
-if (!existsSync(TMP_DIR)) mkdirSync(TMP_DIR, { recursive: true })
+const { createTranscriptionSession } = require('./transcribe')
 
 /**
  * Start listening to voice in a connection.
- * Calls onTranscript(text) when speech is detected and transcribed.
+ * Streams audio to ElevenLabs Scribe Realtime for transcription.
+ * Calls onTranscript(text) when a committed transcript is received.
  */
 function startListening(connection, onTranscript) {
   const receiver = connection.receiver
+  const activeListeners = new Set()
 
-  receiver.speaking.on('start', (userId) => {
-    // Only listen to specific user if configured, otherwise listen to all
+  // Create a persistent STT session
+  let sttSession = null
+
+  async function ensureSession() {
+    if (sttSession) return sttSession
+
+    sttSession = createTranscriptionSession()
+    sttSession.onTranscript = (text) => {
+      console.log(`Committed transcript: "${text}"`)
+      onTranscript(text)
+    }
+    sttSession.onPartial = (text) => {
+      // Could display partial transcripts in text channel later
+      process.stdout.write(`\r  [partial] ${text}          `)
+    }
+    sttSession.onError = (err) => {
+      console.error('STT session error, will reconnect on next speech:', err.message_type || err.message || err)
+      sttSession = null
+    }
+
+    await sttSession.ready
+    return sttSession
+  }
+
+  receiver.speaking.on('start', async (userId) => {
+    // Only listen to specific user if configured
     const listenTo = process.env.LISTEN_TO_USER_ID
     if (listenTo && userId !== listenTo) return
 
-    const audioStream = receiver.subscribe(userId, {
-      end: {
-        behavior: EndBehaviorType.AfterSilence,
-        duration: 1500, // ms of silence before we consider speech done
-      },
-    })
+    // Prevent duplicate listeners for the same user
+    if (activeListeners.has(userId)) return
+    activeListeners.add(userId)
 
-    const filename = `${userId}-${Date.now()}.pcm`
-    const filepath = join(TMP_DIR, filename)
-    const writeStream = createWriteStream(filepath)
+    try {
+      const session = await ensureSession()
 
-    const opusDecoder = new (require('prism-media').opus.Decoder)({
-      rate: 48000,
-      channels: 1,
-      frameSize: 960,
-    })
+      const audioStream = receiver.subscribe(userId, {
+        end: {
+          behavior: EndBehaviorType.AfterSilence,
+          duration: 2000, // Discord-level silence cutoff (longer than VAD - let ElevenLabs handle the real detection)
+        },
+      })
 
-    audioStream.pipe(opusDecoder).pipe(writeStream)
+      const OpusScript = require('opusscript')
+      const { Transform } = require('stream')
 
-    writeStream.on('finish', async () => {
-      try {
-        // Convert PCM to WAV for Whisper
-        const wavPath = filepath.replace('.pcm', '.wav')
-        await pcmToWav(filepath, wavPath)
+      const decoder = new OpusScript(48000, 1)
+      const opusDecoder = new Transform({
+        transform(chunk, _encoding, callback) {
+          try {
+            const decoded = decoder.decode(chunk)
+            // Stream PCM directly to ElevenLabs
+            session.send(Buffer.from(decoded))
+            callback()
+          } catch (err) {
+            callback(err)
+          }
+        },
+      })
 
-        const text = await transcribe(wavPath)
-        if (text && text.trim().length > 0) {
-          await onTranscript(text.trim())
-        }
+      audioStream.pipe(opusDecoder)
 
-        // Cleanup
-        const fs = require('fs')
-        fs.unlinkSync(filepath)
-        fs.unlinkSync(wavPath)
-      } catch (err) {
-        console.error('Transcription error:', err)
-      }
-    })
+      audioStream.on('end', () => {
+        activeListeners.delete(userId)
+      })
+
+      audioStream.on('error', (err) => {
+        console.error('Audio stream error:', err)
+        activeListeners.delete(userId)
+      })
+    } catch (err) {
+      console.error('Failed to start STT session:', err)
+      activeListeners.delete(userId)
+    }
   })
 
-  console.log('Listening for speech...')
-}
-
-/**
- * Convert raw PCM (48kHz, 16-bit, mono) to WAV file using ffmpeg.
- */
-function pcmToWav(pcmPath, wavPath) {
-  return new Promise((resolve, reject) => {
-    const { spawn } = require('child_process')
-    const ffmpeg = spawn('ffmpeg', [
-      '-y',
-      '-f', 's16le',
-      '-ar', '48000',
-      '-ac', '1',
-      '-i', pcmPath,
-      '-ar', '16000', // Whisper expects 16kHz
-      '-ac', '1',
-      wavPath,
-    ])
-
-    ffmpeg.on('close', (code) => {
-      if (code === 0) resolve()
-      else reject(new Error(`ffmpeg exited with code ${code}`))
-    })
-
-    ffmpeg.on('error', reject)
-  })
+  console.log('Listening for speech (ElevenLabs Scribe Realtime)...')
 }
 
 module.exports = { startListening }
