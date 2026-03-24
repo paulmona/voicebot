@@ -1,0 +1,17 @@
+# Secrets
+.env
+
+# Node
+node_modules/
+
+# Audio temp files
+*.wav
+*.mp3
+*.pcm
+tmp/
+
+# OS
+.DS_Store
+
+# Logs
+*.log

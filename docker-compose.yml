@@ -1,0 +1,9 @@
+services:
+  voicebot:
+    build: .
+    container_name: voicebot
+    restart: unless-stopped
+    env_file: .env
+    stop_grace_period: 10s
+    mem_limit: 512m
+    cpus: 1

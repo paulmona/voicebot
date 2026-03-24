@@ -1,0 +1,88 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>VoiceBot</Name>
+  <Repository>ghcr.io/paulmona/voicebot:latest</Repository>
+  <Registry>https://github.com/paulmona/voicebot/pkgs/container/voicebot</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/paulmona/voicebot</Support>
+  <Project>https://github.com/paulmona/voicebot</Project>
+  <Overview>Discord voice bot that translates speech to text for AI agents (Friday, Sunday) and speaks their replies back. Uses Faster Whisper for local STT and ElevenLabs for TTS.</Overview>
+  <Category>Productivity: AI:</Category>
+  <WebUI/>
+  <TemplateURL/>
+  <Icon/>
+  <ExtraParams>--restart=unless-stopped --memory=512m --cpus=1</ExtraParams>
+  <PostArgs/>
+  <CPUset/>
+  <Description>Discord voice bot - bridges voice channels with AI agents via STT/TTS.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+  </Networking>
+  <Data/>
+  <Environment>
+    <Variable>
+      <Value/>
+      <Name>DISCORD_BOT_TOKEN</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>DISCORD_GUILD_ID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>DISCORD_VOICE_CHANNEL_ID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>DISCORD_TEXT_CHANNEL_ID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>DEFAULT_AGENT_ID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>1485642285356945529</Value>
+      <Name>FRIDAY_BOT_USER_ID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>1484338730448846898</Value>
+      <Name>SUNDAY_BOT_USER_ID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value/>
+      <Name>ELEVENLABS_API_KEY</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>DbwWo4rVEd5NrejHYUnm</Value>
+      <Name>ELEVENLABS_VOICE_ID</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>base.en</Value>
+      <Name>WHISPER_MODEL</Name>
+      <Mode/>
+    </Variable>
+  </Environment>
+  <Labels/>
+  <Config Name="Discord Bot Token" Target="DISCORD_BOT_TOKEN" Default="" Mode="" Description="Discord bot token for the voice bot (separate app from agents)." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="Discord Guild ID" Target="DISCORD_GUILD_ID" Default="" Mode="" Description="Discord server ID." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Voice Channel ID" Target="DISCORD_VOICE_CHANNEL_ID" Default="" Mode="" Description="Discord voice channel ID to auto-join." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Text Channel ID" Target="DISCORD_TEXT_CHANNEL_ID" Default="" Mode="" Description="Discord text channel for posting transcripts and reading replies." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Default Agent ID" Target="DEFAULT_AGENT_ID" Default="" Mode="" Description="Discord user ID of the default agent to route voice to." Type="Variable" Display="always" Required="true" Mask="false"/>
+  <Config Name="Friday Bot User ID" Target="FRIDAY_BOT_USER_ID" Default="1485642285356945529" Mode="" Description="Friday's Discord user ID for wake word routing." Type="Variable" Display="advanced" Required="false" Mask="false">1485642285356945529</Config>
+  <Config Name="Sunday Bot User ID" Target="SUNDAY_BOT_USER_ID" Default="1484338730448846898" Mode="" Description="Sunday's Discord user ID for wake word routing." Type="Variable" Display="advanced" Required="false" Mask="false">1484338730448846898</Config>
+  <Config Name="ElevenLabs API Key" Target="ELEVENLABS_API_KEY" Default="" Mode="" Description="ElevenLabs API key for text-to-speech." Type="Variable" Display="always" Required="true" Mask="true"/>
+  <Config Name="ElevenLabs Voice ID" Target="ELEVENLABS_VOICE_ID" Default="DbwWo4rVEd5NrejHYUnm" Mode="" Description="ElevenLabs voice ID for TTS output." Type="Variable" Display="advanced" Required="false" Mask="false">DbwWo4rVEd5NrejHYUnm</Config>
+  <Config Name="Whisper Model" Target="WHISPER_MODEL" Default="base.en" Mode="" Description="Faster Whisper model size (tiny.en, base.en, small.en, medium.en)." Type="Variable" Display="advanced" Required="false" Mask="false">base.en</Config>
+</Container>
